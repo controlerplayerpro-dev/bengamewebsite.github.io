@@ -3,96 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arcade Dashboard</title>
+    <!-- Stealth tab name for AB Tutor logs -->
+    <title>Research Portfolio: Home</title>
     <style>
-        body { background-color: #111; color: #fff; font-family: monospace; text-align: center; margin: 0; padding: 20px; }
-        h1 { margin-bottom: 10px; color: #00ffcc; }
-        #score-board { font-size: 20px; margin-bottom: 20px; }
-        canvas { background-color: #222; border: 4px solid #00ffcc; box-shadow: 0 0 20px #00ffcc; display: block; margin: 0 auto; }
-        .controls { margin-top: 15px; color: #888; font-size: 14px; }
+        body { background-color: #0b0c10; color: #c5c6c7; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 40px 20px; text-align: center; }
+        h1 { color: #66fcf1; font-size: 36px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 5px; }
+        .subtitle { color: #45f3ff; font-family: monospace; font-size: 14px; margin-bottom: 40px; }
+        
+        /* Grid Layout for Game Cards */
+        .arcade-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 25px; max-width: 900px; margin: 0 auto; }
+        .game-card { background-color: #1f2833; border: 2px solid #45f3ff; border-radius: 12px; padding: 25px; text-align: left; transition: transform 0.2s, box-shadow 0.2s; text-decoration: none; color: inherit; display: block; }
+        .game-card:hover { transform: translateY(-5px); box-shadow: 0 0 15px rgba(69, 243, 255, 0.4); border-color: #66fcf1; }
+        .game-title { color: #66fcf1; font-size: 20px; font-weight: bold; margin: 0 0 10px 0; text-transform: uppercase; font-family: monospace; }
+        .game-desc { color: #a4b3c6; font-size: 14px; line-height: 1.4; margin: 0; }
+        
+        .footer-note { margin-top: 5px; color: #454d5a; font-size: 11px; font-family: monospace; }
+
+        /* Secret Emergency Cover Screen (AB Tutor Protection) */
+        #fake-screen { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: white; color: black; font-family: Arial, sans-serif; text-align: left; padding: 40px; box-sizing: border-box; z-index: 9999; }
+        #fake-screen h1 { font-size: 26px; color: #222; text-transform: none; letter-spacing: 0; }
+        #fake-screen p { font-size: 15px; color: #444; line-height: 1.6; max-width: 800px; }
     </style>
 </head>
 <body>
 
-    <h1>RETRO SNAKE</h1>
-    <div id="score-board">SCORE: <span id="score">0</span></div>
-    
-    <!-- This is the game window screen -->
-    <canvas id="gameCanvas" width="400" height="400"></canvas>
+    <!-- Emergency Cover Screen -->
+    <div id="fake-screen">
+        <h1>Overview of Network Node Architecture</h1>
+        <hr>
+        <p><strong>Abstract:</strong> This documentation details the baseline operational flow for distributed endpoints. When evaluating sub-network domains, routing tables must remain synchronised to prevent packet collision and latency spikes during high-concurrency loops.</p>
+        <p><strong>Configurations:</strong> Reviewing structural dependencies ensures maximum uptime without compromising localized access rules across cloud infrastructure models.</p>
+    </div>
 
-    <div class="controls">Use the ARROW KEYS on your keyboard to move.</div>
+    <!-- Main Menu Area -->
+    <div id="menu-container">
+        <h1>Arcade Hub</h1>
+        <div class="subtitle">SYSTEMS OPERATIONAL // PRESS ESC TO CAMOUFLAGE</div>
+
+        <div class="arcade-grid">
+            
+            <!-- Game 1: Your New Custom Awesome Game -->
+            <a href="awesome-game.html" class="game-card">
+                <div class="game-title">✨ My Awesome Game</div>
+                <div class="game-desc">Play my brand new custom-built project! Full gameplay features, smooth controls, and high score tracking.</div>
+            </a>
+
+            <!-- Game 2: Space Invaders -->
+            <a href="space.html" class="game-card">
+                <div class="game-title">🚀 Space Shooter</div>
+                <div class="game-desc">Defend the sector from incoming alien fleets. Features smooth continuous laser firing and speed scaling.</div>
+            </a>
+
+            <!-- Game 3: Classic Retro Snake -->
+            <a href="snake.html" class="game-card">
+                <div class="game-title">🐍 Retro Snake</div>
+                <div class="game-desc">The original arcade classic. Eat the glowing energy nodes, grow your matrix, and avoid biting your own tail.</div>
+            </a>
+
+        </div>
+
+        <p class="footer-note">v1.2.0 // encrypted_handshake_secure</p>
+    </div>
 
     <script>
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
-        const grid = 20;
-        let count = 0;
-        let score = 0;
-        
-        let snake = { x: 160, y: 160, dx: grid, dy: 0, cells: [{x: 160, y: 160}, {x: 140, y: 160}], maxCells: 4 };
-        let apple = { x: 320, y: 320 };
-
-        function getRandomInt(min, max) { return Math.floor(Math.random() * (max - min)) + min; }
-
-        function gameLoop() {
-            requestAnimationFrame(gameLoop);
-            if (++count < 6) { return; } // Controls game speed (higher = slower)
-            count = 0;
-            ctx.clearRect(0,0,canvas.width,canvas.height);
-
-            snake.x += snake.dx;
-            snake.y += snake.dy;
-
-            // Wall collisions (wraps snake around screen edges)
-            if (snake.x < 0) snake.x = canvas.width - grid;
-            else if (snake.x >= canvas.width) snake.x = 0;
-            if (snake.y < 0) snake.y = canvas.height - grid;
-            else if (snake.y >= canvas.height) snake.y = 0;
-
-            snake.cells.unshift({x: snake.x, y: snake.y});
-            if (snake.cells.length > snake.maxCells) { snake.cells.pop(); }
-
-            // Draw Apple
-            ctx.fillStyle = '#ff5555';
-            ctx.fillRect(apple.x, apple.y, grid-1, grid-1);
-
-            // Draw Snake
-            ctx.fillStyle = '#00ffcc';
-            snake.cells.forEach(function(cell, index) {
-                ctx.fillRect(cell.x, cell.y, grid-1, grid-1);  
-                
-                // Snake eats apple
-                if (cell.x === apple.x && cell.y === apple.y) {
-                    snake.maxCells++;
-                    score += 10;
-                    document.getElementById('score').innerText = score;
-                    apple.x = getRandomInt(0, 20) * grid;
-                    apple.y = getRandomInt(0, 20) * grid;
+        // Universal Boss Key for the Menu
+        window.addEventListener("keydown", e => {
+            if (e.key === "Escape") {
+                const fake = document.getElementById("fake-screen");
+                const menu = document.getElementById("menu-container");
+                if (fake.style.display === "block") {
+                    fake.style.display = "none";
+                    menu.style.display = "block";
+                    document.body.style.background = "#0b0c10";
+                } else {
+                    fake.style.display = "block";
+                    menu.style.display = "none";
+                    document.body.style.background = "white";
                 }
-                
-                // Check collision with self
-                for (let i = index + 1; i < snake.cells.length; i++) {
-                    if (cell.x === snake.cells[i].x && cell.y === snake.cells[i].y) {
-                        // Game Over reset
-                        snake.x = 160; snake.y = 160;
-                        snake.cells = [{x: 160, y: 160}, {x: 140, y: 160}];
-                        snake.maxCells = 4; snake.dx = grid; snake.dy = 0;
-                        score = 0;
-                        document.getElementById('score').innerText = score;
-                    }
-                }
-            });
-        }
-
-        // Listen for keyboard input
-        document.addEventListener('keydown', function(e) {
-            if (e.which === 37 && snake.dx === 0) { snake.dx = -grid; snake.dy = 0; } // Left
-            else if (e.which === 38 && snake.dy === 0) { snake.dy = -grid; snake.dx = 0; } // Up
-            else if (e.which === 39 && snake.dx === 0) { snake.dx = grid; snake.dy = 0; } // Right
-            else if (e.which === 40 && snake.dy === 0) { snake.dy = grid; snake.dx = 0; } // Down
+            }
         });
-
-        requestAnimationFrame(gameLoop);
     </script>
 </body>
 </html>
