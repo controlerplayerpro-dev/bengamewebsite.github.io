@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IT'S WATCHING - v1.18</title>
+    <style>
+        body { margin: 0; background: #000; overflow: hidden; font-family: 'Courier New', monospace; color: #ff0; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        canvas { border: 4px solid #222; background: #000; cursor: crosshair; display: none; }
+        .screen { text-align: center; background: rgba(10, 10, 0, 0.95); padding: 30px; border: 2px solid #ff0; box-shadow: 0 0 20px #ff0; z-index: 10; width: 480px; max-height: 85vh; overflow-y: auto; }
+        h1 { font-size: 40px; letter-spacing: 5px; margin: 0; color: #ff0; text-shadow: 3px 3px #550; animation: flicker 0.1s infinite; }
+        button { background: transparent; color: #ff0; border: 2px solid #ff0; padding: 10px 20px; font-size: 18px; cursor: pointer; margin-top: 10px; font-family: inherit; transition: 0.3s; width: 100%; }
+        button:hover { background: #ff0; color: #000; }
+        button:disabled { border-color: #440; color: #440; cursor: not-allowed; opacity: 0.5; }
+        #hud { position: fixed; bottom: 20px; left: 20px; color: #ff0; font-size: 18px; display: none; z-index: 20; background: rgba(0,0,0,0.7); padding: 10px; border: 1px solid #ff0; }
+        #vhs { position: fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 2px); opacity: 0.4; z-index: 5; }
+        #flashEffect { position: fixed; top:0; left:0; width:100%; height:100%; background: white; opacity: 0; pointer-events: none; z-index: 100; }
+    </style>
+</head>
+<body>
+    <div id="vhs"></div>
+    <div id="flashEffect"></div>
+    <div id="hud">
+        BATTERY: <span id="batVal">100</span>% | 
+        LIGHT: <span id="flStatus">ON</span> [SPACE] | 
+        FLASH: <span id="flashStatus">READY</span> [F]
+    </div>
+
+    <div id="menu" class="screen">
+        <h1>IT'S WATCHING</h1>
+        <p id="status" style="color: #880; margin-top:10px; font-size: 12px;">SYSTEMS LOCKED - VIEW CREDITS</p>
+        <button id="startBtn" onclick="startGame('2D')" disabled>START (2D)</button>
+        <button id="start3DBtn" onclick="startGame('3D')" disabled style="color: #f00; border-color: #f00;">START (3D MODE)</button>
+        <button onclick="showScreen('creditsScreen')">CREDITS</button>
+        <button onclick="showScreen('logScreen')">UPDATE LOG</button>
+    </div>
+
+    <div id="logScreen" class="screen" style="display:none;">
+        <h1>UPDATE LOG</h1>
+        <div style="text-align:left; font-size:12px; color:#ccc; margin:20px 0;">
+            <b style="color:#ff0;">[v1.18] - SAFE PASSAGE UPDATE</b>
+            <ul>
+                <li>Added: Collision Phasing. Walk through the entity while it's Hard Stunned.</li>
+                <li>Fixed: Entity is now 100% frozen during the 10s stun, even if light is OFF.</li>
+                <li>Visual: Entity turns semi-transparent white during Hard Stun.</li>
+                <li>Balance: Standard "Sight-Freeze" still results in death if touched.</li>
+            </ul>
+        </div>
+        <button onclick="showScreen('menu')">BACK</button>
+    </div>
+
+    <div id="creditsScreen" class="screen" style="display:none;">
+        <h1>CREDITS</h1>
+        <div style="margin: 20px 0; color: #fff; font-size: 14px; line-height: 1.6;">
+            <span style="color:#ff0; font-size:10px; letter-spacing:2px;">LEAD DEVELOPER</span><br>
+            BENJAMIN ALFRED<br><br>
+            <span style="color:#ff0; font-size:10px; letter-spacing:2px;">CREATIVE CONSULTANT</span><br>
+            ROCCO STUBBINGS<br><br>
+            <span style="color:#ff0; font-size:10px; letter-spacing:2px;">PLAYTESTERS</span><br>
+            PAXON ZANTEY • ROCCO STUBBINGS<br>
+            BEWANE DIBELLE-GBOGBI • JEREMY IDOMEH<br>
+            JAIMEE ZONDAI • CARBON MULLOCK<br>
+            MOSSES VUINAKELO
+        </div>
+        <button onclick="showScreen('menu')">BACK</button>
+    </div>
+
+    <canvas id="game" width="800" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('game');
+        const ctx = canvas.getContext('2d');
+        const TILE = 40, COLS = 19, ROWS = 15;
+        let gameState = "MENU", viewMode = "2D", creditsViewed = false, maze = [];
+        let lastTime = 0;
+        
+        const player = { x: 60, y: 60, dir: 0, speed: 2.2, battery: 100, lightOn: true, flashCooldown: 0 };
+        const enemy = { x: 700, y: 500, speed: 2.1, stunned: false, stunTimer: 0 }; 
+        const keys = {};
+
+        function showScreen(id) {
+            document.querySelectorAll('.screen').forEach(s => s.style.display = 'none');
+            document.getElementById(id).style.display = 'block';
+            if(id === 'creditsScreen') creditsViewed = true;
+            if(id === 'menu' && creditsViewed) {
+                document.getElementById('startBtn').disabled = false;
+                document.getElementById('start3DBtn').disabled = false;
+                document.getElementById('status').innerText = "SYSTEMS ONLINE";
+                document.getElementById('status').style.color = "#0f0";
+            }
+        }
+
+        function generateMaze() {
+            let m = Array.from({length: ROWS}, () => Array(COLS).fill(1));
+            function walk(r, c) {
+                m[r][c] = 0;
+                const neighbors = [[0,2],[0,-2],[2,0],[-2,0]].sort(() => Math.random() - 0.5);
+                for(let [dr, dc] of neighbors) {
+                    let nr = r + dr, nc = c + dc;
+                    if(nr > 0 && nr < ROWS-1 && nc > 0 && nc < COLS-1 && m[nr][nc] === 1) {
+                        m[r + dr/2][c + dc/2] = 0;
+                        walk(nr, nc);
+                    }
+                }
+            }
+            walk(1, 1);
+            m[ROWS-2][COLS-2] = 2;
+            return m;
+        }
+
+        function triggerFlash() {
+            if(player.flashCooldown > 0 || !player.lightOn || player.battery <= 0) return;
+
+            const distToPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+            const angToE = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+            let diff = Math.abs(player.dir - angToE);
+            if(diff > Math.PI) diff = Math.PI*2 - diff;
+
+            const canBeFlashed = ((viewMode === "2D" || diff < 0.6) && distToPlayer < 300 && canSee(player.x, player.y, enemy.x, enemy.y));
+
+            if(canBeFlashed) {
+                enemy.stunTimer = 10;
+                const fx = document.getElementById('flashEffect');
+                fx.style.transition = 'none';
+                fx.style.opacity = '1';
+                setTimeout(() => {
+                    fx.style.transition = 'opacity 0.8s';
+                    fx.style.opacity = '0';
+                }, 50);
+            }
+            player.flashCooldown = 12;
+        }
+
+        function startGame(mode) { 
+            viewMode = mode; 
+            maze = generateMaze();
+            player.x = 60; player.y = 60; player.battery = 100; player.lightOn = true; player.flashCooldown = 0;
+            enemy.x = (COLS-2)*TILE + TILE/2; enemy.y = (ROWS-2)*TILE + TILE/2; enemy.stunTimer = 0;
+            gameState = "PLAY"; 
+            document.getElementById('menu').style.display = 'none';
+            canvas.style.display = "block"; 
+            document.getElementById('hud').style.display = "block";
+            lastTime = performance.now(); 
+            loop(); 
+        }
+
+        window.onkeydown = e => {
+            keys[e.key.toLowerCase()] = true;
+            if(e.code === "Space" && gameState === "PLAY") player.lightOn = !player.lightOn;
+            if(e.key.toLowerCase() === "f" && gameState === "PLAY") triggerFlash();
+        };
+        window.onkeyup = e => keys[e.key.toLowerCase()] = false;
+
+        function checkWall(nx, ny, isEnemy = false) {
+            const b = isEnemy ? 4 : 6; 
+            const pts = [{x:nx-b,y:ny-b},{x:nx+b,y:ny-b},{x:nx-b,y:ny+b},{x:nx+b,y:ny+b}];
+            return pts.some(p => maze[Math.floor(p.y/TILE)]?.[Math.floor(p.x/TILE)] === 1);
+        }
+
+        function canSee(x1, y1, x2, y2) {
+            let dist = Math.hypot(x2-x1, y2-y1);
+            let ang = Math.atan2(y2-y1, x2-x1);
+            for(let d=0; d<dist; d+=8) {
+                if(maze[Math.floor((y1+Math.sin(ang)*d)/TILE)]?.[Math.floor((x1+Math.cos(ang)*d)/TILE)] === 1) return false;
+            }
+            return true;
+        }
+
+        function getNextTileBFS(ex, ey, px, py) {
+            let start = {r: Math.floor(ey/TILE), c: Math.floor(ex/TILE)};
+            let target = {r: Math.floor(py/TILE), c: Math.floor(px/TILE)};
+            let queue = [[start]];
+            let visited = new Set([`${start.r},${start.c}`]);
+
+            while(queue.length > 0) {
+                let path = queue.shift();
+                let curr = path[path.length - 1];
+                if(curr.r === target.r && curr.c === target.c) {
+                    return path[1] ? {x: path[1].c * TILE + TILE/2, y: path[1].r * TILE + TILE/2} : {x: px, y: py};
+                }
+                [[0,1],[1,0],[0,-1],[-1,0]].forEach(([dr, dc]) => {
+                    let nr = curr.r + dr, nc = curr.c + dc;
+                    if(nr >= 0 && nr < ROWS && nc >= 0 && nc < COLS && maze[nr][nc] !== 1 && !visited.has(`${nr},${nc}`)) {
+                        visited.add(`${nr},${nc}`);
+                        queue.push([...path, {r: nr, c: nc}]);
+                    }
+                });
+            }
+            return {x: px, y: py};
+        }
+
+        function update() {
+            let now = performance.now();
+            let dt = (now - lastTime) / 1000;
+            lastTime = now;
+            if(dt > 0.1) dt = 0.016; 
+
+            if(player.flashCooldown > 0) {
+                player.flashCooldown -= dt;
+                document.getElementById('flashStatus').innerText = Math.ceil(player.flashCooldown) + "s";
+                document.getElementById('flashStatus').style.color = "#f00";
+            } else {
+                document.getElementById('flashStatus').innerText = "READY";
+                document.getElementById('flashStatus').style.color = "#0f0";
+            }
+
+            let mx = 0, my = 0;
+            if(viewMode === "2D") {
+                if(keys['w']) my -= player.speed; if(keys['s']) my += player.speed;
+                if(keys['a']) mx -= player.speed; if(keys['d']) mx += player.speed;
+            } else {
+                if(keys['a']) player.dir -= 0.05; if(keys['d']) player.dir += 0.05;
+                if(keys['w']) { mx = Math.cos(player.dir)*player.speed; my = Math.sin(player.dir)*player.speed; }
+                if(keys['s']) { mx = -Math.cos(player.dir)*player.speed; my = -Math.sin(player.dir)*player.speed; }
+            }
+            if(!checkWall(player.x + mx, player.y)) player.x += mx;
+            if(!checkWall(player.x, player.y + my)) player.y += my;
+
+            if(player.lightOn && player.battery > 0) {
+                player.battery -= (1 / 1.75) * dt; 
+            } else if (!player.lightOn && player.battery < 100) {
+                player.battery += (1 / 0.67) * dt; 
+            }
+            player.battery = Math.max(0, Math.min(100, player.battery));
+            if(player.battery <= 0) player.lightOn = false;
+            
+            document.getElementById('batVal').innerText = Math.floor(player.battery);
+            document.getElementById('flStatus').innerText = player.lightOn ? "ON" : "OFF";
+
+            const distToPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+            
+            if(enemy.stunTimer > 0) {
+                enemy.stunTimer -= dt;
+                enemy.stunned = true; // Hard stun overrides everything
+            } else {
+                const angToE = Math.atan2(enemy.y - player.y, enemy.x - player.x);
+                let diff = Math.abs(player.dir - angToE);
+                if(diff > Math.PI) diff = Math.PI*2 - diff;
+                enemy.stunned = (player.lightOn && (viewMode === "2D" || diff < 0.6) && distToPlayer < 300 && canSee(player.x, player.y, enemy.x, enemy.y));
+            }
+
+            if(!enemy.stunned) {
+                let tx, ty;
+                if(canSee(enemy.x, enemy.y, player.x, player.y)) {
+                    tx = player.x; ty = player.y;
+                } else {
+                    let next = getNextTileBFS(enemy.x, enemy.y, player.x, player.y);
+                    tx = next.x; ty = next.y;
+                }
+                let ang = Math.atan2(ty - enemy.y, tx - enemy.x);
+                let ex = Math.cos(ang) * enemy.speed;
+                let ey = Math.sin(ang) * enemy.speed;
+                if(!checkWall(enemy.x + ex, enemy.y, true)) enemy.x += ex;
+                if(!checkWall(enemy.x, enemy.y + ey, true)) enemy.y += ey;
+            }
+
+            // Death condition: Only kills if not Hard Stunned (Flash)
+            if(distToPlayer < 22 && enemy.stunTimer <= 0) location.reload();
+
+            if(maze[Math.floor(player.y/TILE)][Math.floor(player.x/TILE)] === 2) {
+                player.x = 60; player.y = 60; player.battery = 100;
+                maze = generateMaze();
+            }
+        }
+
+        function drawMinimap() {
+            const mS = 5, mX = 680, mY = 20;
+            ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(mX-5, mY-5, COLS*mS+10, ROWS*mS+10);
+            for(let r=0; r<ROWS; r++) {
+                for(let c=0; c<COLS; c++) {
+                    if(maze[r][c] === 1) { ctx.fillStyle = "#331"; ctx.fillRect(mX + c*mS, mY + r*mS, mS, mS); }
+                    if(maze[r][c] === 2) { ctx.fillStyle = "#0f0"; ctx.fillRect(mX + c*mS, mY + r*mS, mS, mS); }
+                }
+            }
+            ctx.fillStyle = "#00f"; ctx.fillRect(mX+(player.x/TILE)*mS, mY+(player.y/TILE)*mS, 4, 4);
+            ctx.fillStyle = enemy.stunTimer > 0 ? "#fff" : "#f00"; ctx.fillRect(mX+(enemy.x/TILE)*mS, mY+(enemy.y/TILE)*mS, 4, 4);
+        }
+
+        function draw3D() {
+            ctx.fillStyle = "#000"; ctx.fillRect(0,0,800,600);
+            const numRays = 160, zBuf = new Array(160).fill(1000);
+            if(player.lightOn) {
+                for(let i=0; i<numRays; i++) {
+                    let rayA = (player.dir - 0.4) + (i/numRays)*0.8;
+                    let d = 0;
+                    while(d < 450) {
+                        d += 2;
+                        let cx = player.x + Math.cos(rayA)*d, cy = player.y + Math.sin(rayA)*d;
+                        if(maze[Math.floor(cy/TILE)]?.[Math.floor(cx/TILE)] === 1) {
+                            let h = 14000 / (d * Math.cos(rayA - player.dir));
+                            let lum = Math.max(0, 180 - (d/2));
+                            ctx.fillStyle = `rgb(${lum}, ${lum*0.8}, 0)`;
+                            ctx.fillRect(i*5, 300-h/2, 5, h);
+                            zBuf[i] = d; break;
+                        }
+                    }
+                }
+                const dx = enemy.x - player.x, dy = enemy.y - player.y;
+                let eDist = Math.hypot(dx, dy), eAng = Math.atan2(dy, dx) - player.dir;
+                if(eAng < -Math.PI) eAng += Math.PI*2; if(eAng > Math.PI) eAng -= Math.PI*2;
+                if(Math.abs(eAng) < 0.45) {
+                    let sx = (eAng + 0.4) * (800/0.8), h = 16000 / eDist;
+                    if(eDist < zBuf[Math.floor(sx/5)] && canSee(player.x, player.y, enemy.x, enemy.y)) {
+                        ctx.globalAlpha = enemy.stunTimer > 0 ? 0.5 : 1.0;
+                        ctx.fillStyle = enemy.stunTimer > 0 ? "#fff" : (enemy.stunned ? "#ff0" : "#f00");
+                        ctx.fillRect(sx - h/4, 300-h/2, h/2, h);
+                        ctx.globalAlpha = 1.0;
+                    }
+                }
+            }
+            drawMinimap();
+        }
+
+        function draw2D() {
+            ctx.fillStyle = "#111"; ctx.fillRect(0,0,800,600);
+            for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+                if(maze[r][c]===1) { ctx.fillStyle = "#221"; ctx.fillRect(c*TILE, r*TILE, TILE, TILE); }
+                if(maze[r][c]===2) { ctx.fillStyle = "#0f0"; ctx.fillRect(c*TILE, r*TILE, TILE, TILE); }
+            }
+            ctx.fillStyle = "#00f"; ctx.fillRect(player.x-8, player.y-8, 16, 16);
+            ctx.globalAlpha = enemy.stunTimer > 0 ? 0.5 : 1.0;
+            ctx.fillStyle = enemy.stunTimer > 0 ? "#fff" : "#f00"; ctx.fillRect(enemy.x-10, enemy.y-10, 20, 20);
+            ctx.globalAlpha = 1.0;
+            if(player.lightOn) {
+                let g = ctx.createRadialGradient(player.x, player.y, 10, player.x, player.y, 250);
+                g.addColorStop(0, 'transparent'); g.addColorStop(1, 'black');
+                ctx.fillStyle = g; ctx.fillRect(0,0,800,600);
+            } else { ctx.fillStyle = "black"; ctx.fillRect(0,0,800,600); }
+            drawMinimap();
+        }
+
+        function loop() {
+            if(gameState === "PLAY") {
+                update(); viewMode === "2D" ? draw2D() : draw3D();
+                requestAnimationFrame(loop);
+            }
+        }
+    </script>
+</body>
+</html>
+
